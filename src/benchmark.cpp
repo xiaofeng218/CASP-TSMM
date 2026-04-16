@@ -23,8 +23,12 @@
 #include <string>
 #include <fstream>
 #include <sstream>
-#include <sys/utsname.h>
-#include <unistd.h>
+#ifndef _WIN32
+#include <unistd.h>   /* gethostname on Linux */
+#else
+#include <winsock2.h>
+#pragma comment(lib, "ws2_32.lib")
+#endif
 
 #ifdef _OPENMP
 #include <omp.h>
@@ -79,13 +83,26 @@ static inline double now_sec() {
 // ============================================================
 
 static double* alloc_mat(size_t rows, size_t cols) {
+    size_t bytes = rows * cols * sizeof(double);
+#ifdef _WIN32
+    void* p = _aligned_malloc(bytes, 64);
+    if (!p) {
+#else
     void* p = nullptr;
-    if (posix_memalign(&p, 64, rows * cols * sizeof(double)) != 0) {
-        fprintf(stderr, "alloc_mat: failed to allocate %zu bytes\n",
-                rows * cols * sizeof(double));
+    if (posix_memalign(&p, 64, bytes) != 0) {
+#endif
+        fprintf(stderr, "alloc_mat: failed to allocate %zu bytes\n", bytes);
         exit(1);
     }
     return (double*)p;
+}
+
+static void free_mat(void* p) {
+#ifdef _WIN32
+    _aligned_free(p);
+#else
+    free(p);
+#endif
 }
 
 static inline double tsmm_flops(int m, int n, int k) {
@@ -744,7 +761,7 @@ int main(int argc, char** argv) {
             all_results.push_back(res);
         }
 
-        free(A); free(B); free(Cref); free(Ctmp);
+        free_mat(A); free_mat(B); free_mat(Cref); free_mat(Ctmp);
         printf("\n");
 
         // Write incremental JSON after each problem so web can show progress
