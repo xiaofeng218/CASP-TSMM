@@ -1,123 +1,111 @@
-# CASP-TSMM: Tall-Skinny Matrix Multiplication Optimization
+# CASP-TSMM
 
-TSMM 定义：**C = A^T × B**，A ∈ ℝ^{k×m}，B ∈ ℝ^{k×n}，C ∈ ℝ^{m×n}（双精度）
+Tall-Skinny Matrix Multiplication benchmark and optimization project.
 
-## 项目结构
+The project evaluates:
 
+```text
+C = A^T * B
+A: k x m, B: k x n, C: m x n, double precision
 ```
+
+Both row-major and column-major storage are supported by the benchmark. The optimized kernels focus on the row-major path used by the default run.
+
+## Project Layout
+
+```text
 CASP-TSMM/
-├── src/
-│   └── benchmark.cpp      # 所有实现 + 评测框架
-├── web/
-│   ├── index.html         # 实时评测看板
-│   ├── server.py          # Web 服务器（纯 Python，无需 Docker）
-│   └── results.json       # 评测结果（运行后生成）
-├── scripts/
-│   ├── run_local.sh       # 本地运行
-│   └── submit_slurm.sh    # Slurm 提交（目标集群）
-└── Makefile
+|-- src/
+|   |-- benchmark.cpp       # benchmark harness, timing, correctness, JSON output
+|   |-- tsmm.hpp            # shared kernel interface and layout helpers
+|   |-- reference.cpp       # MKL/OpenBLAS dgemm reference, or built-in fallback
+|   |-- naive.cpp           # serial baseline
+|   |-- openmp_kernel.cpp   # OpenMP parallel baseline
+|   |-- blocked.cpp         # cache-blocked OpenMP kernel
+|   |-- avx512.cpp          # AVX-512 kernels
+|   `-- opt.cpp             # combined AVX-512/OpenMP/blocking kernel
+|-- scripts/
+|   |-- run_local.sh        # local benchmark and dashboard runner
+|   `-- submit_slurm.sh     # Slurm submission helper for the target cluster
+|-- web/
+|   |-- index.html          # live dashboard
+|   `-- server.py           # lightweight Python server, no Docker
+`-- Makefile
 ```
 
-## 实现列表
+Generated files such as `benchmark`, `benchmark.exe`, `web/results.json`, and `logs/` are not source files.
 
-| 实现 | 说明 |
-|------|------|
-| `reference`   | CBLAS `dgemm`（MKL/OpenBLAS）基准线 |
-| `naive`       | 简单三重循环（lij 顺序，串行） |
-| `openmp`      | OpenMP 并行化 i 维度 |
-| `blocked`     | 缓存分块（IB×JB×LB tiling）+ OpenMP |
-| `avx512`      | AVX-512 显式 intrinsics，4 路展开（串行） |
-| `avx512_omp`  | AVX-512 + OpenMP 并行 |
-| `opt`         | AVX-512 + 缓存分块 + OpenMP（综合最优） |
+## Implementations
 
-## 必测问题
+| Name | Description |
+| --- | --- |
+| `reference` | CBLAS `dgemm` reference using MKL/OpenBLAS, or a built-in fallback with `BLAS=none` |
+| `naive` | serial three-loop TSMM |
+| `openmp` | OpenMP parallelization over rows of C |
+| `blocked` | cache-blocked OpenMP kernel, tunable with `TSMM_IB/JB/LB` |
+| `avx512` | row-major AVX-512 vectorized kernel |
+| `avx512_omp` | AVX-512 plus OpenMP |
+| `opt` | best-effort combined kernel with special handling for small `m` |
 
-| 问题 | m | n | k |
-|------|---|---|---|
-| 4000×16000×128 | 4000 | 16000 | 128 |
-| 8×16×16000     | 8    | 16   | 16000 |
-| 32×16000×16    | 32   | 16000 | 16 |
-| 144×144×144    | 144  | 144  | 144 |
-
-指标：各问题加速比（相对 cblas_dgemm），取几何平均。
-
-## 快速开始
-
-### 本地编译运行
+## Build And Run
 
 ```bash
-# 使用 OpenBLAS（默认）
+# OpenBLAS, default
 make BLAS=openblas
-./benchmark --output web/results.json
+./benchmark --output web/results.json --required-only
 
-# 使用 Intel MKL（目标集群）
+# Intel MKL on the target cluster
 source /opt/intel/mkl/bin/mklvars.sh intel64
-make BLAS=mkl
-./benchmark --output web/results.json
+make BLAS=mkl AVX512=1
+./benchmark --output web/results.json --required-only
 
-# 无 BLAS（使用内置参考实现）
+# No external BLAS, useful for smoke tests
 make BLAS=none
-./benchmark --output web/results.json
+./benchmark --output web/results.json --required-only --warmup 1 --runs 1
 ```
 
-### 启动 Web 看板
+Benchmark options:
+
+```text
+--required-only       run only the four required problems
+--all                 run required and optional problems
+--layout row|col      choose row-major or column-major storage
+--warmup N            warmup iterations, default 10
+--runs N              timed iterations, default 20
+--no-correctness      skip comparison with the reference result
+```
+
+For very large problems the harness automatically caps warmup to 3 and timed runs to 5 to keep evaluation practical.
+
+## Dashboard
 
 ```bash
-# 终端 1：运行评测
-make run
-
-# 终端 2：启动看板
 make web
-# 浏览器打开 http://localhost:8080
+# open http://localhost:8080
 ```
 
-### 目标集群（BSCC, Slurm）
+Or run benchmark and dashboard together:
 
 ```bash
-# 提交作业（自动绑定 NUMA 节点 0，24 核心）
-bash scripts/submit_slurm.sh
-
-# 仅跑必测问题
-bash scripts/submit_slurm.sh
-
-# 跑全部问题（含可选）
-bash scripts/submit_slurm.sh --all
-
-# 预览作业脚本（不提交）
-bash scripts/submit_slurm.sh --dry-run
-
-# 监控作业
-squeue -u $USER
-tail -f logs/tsmm_<JOBID>.out
+bash scripts/run_local.sh --required-only
 ```
 
-### 调节分块参数
+The benchmark writes incremental updates to `web/results.json`, and the dashboard polls it every three seconds.
+
+## Slurm Target Run
+
+The target CPU is Intel Xeon Platinum 9242 with 96 cores, 4 NUMA nodes, and AVX-512. The submission helper requests all 96 CPUs and binds execution across NUMA nodes `0-3` with interleaved memory placement:
 
 ```bash
-# 通过环境变量调节 blocked/opt 实现的分块大小
-TSMM_IB=64 TSMM_JB=512 TSMM_LB=32 ./benchmark
-OPT_IB=64  OPT_JB=256  OPT_LB=16  ./benchmark
+bash scripts/submit_slurm.sh              # required problems
+bash scripts/submit_slurm.sh --all        # required + optional
+bash scripts/submit_slurm.sh --dry-run    # print the generated job script
 ```
 
-## 目标平台
+Useful environment overrides:
 
-Intel Xeon Platinum 9242 @ 2.30GHz
-- 48 cores/socket × 2 sockets = 96 cores
-- 4 NUMA nodes，每节点 24 cores
-- AVX-512F/DQ/BW/VL/VNNI 支持
-- L1d: 32KB，L2: 1MB，L3: 36MB/12cores
+```bash
+PARTITION=cpu CPUS_PER_TASK=96 NUMA_NODES=0-3 BLAS=mkl bash scripts/submit_slurm.sh
+```
 
-## 评测方法
-
-- 预热：10 轮（大内存问题自动缩减为 3 轮）
-- 计时：20 轮取均值（大内存问题自动缩减为 5 轮）
-- 加速比 = `reference_time / impl_time`
-- 几何平均 = ∏(speedup_i)^{1/4}，仅含 4 个必测问题
-
-## 后续优化方向
-
-- [ ] 针对 (8,16,16000) 专用寄存器内核（C 完全驻留寄存器）
-- [ ] 针对 (32,16000,16) k-unroll 优化（k=16 完全展开）
-- [ ] 预取指令优化（`_mm_prefetch`）
-- [ ] 分块参数自动调优（搜索最优 IB/JB/LB）
-- [ ] 汇编内核（进阶）
+The final metric is GFLOPS per task and speedup versus the `reference` `dgemm` baseline. The dashboard also reports the geometric mean speedup across the required problems.

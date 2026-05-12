@@ -1,0 +1,11 @@
+benchmark
+benchmark.exe
+benchmark_check.exe
+*.o
+*.obj
+*.pdb
+*.ilk
+logs/
+web/results.json
+__pycache__/
+

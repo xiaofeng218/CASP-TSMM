@@ -1,319 +1,317 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="zh-CN">
 <head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width,initial-scale=1">
-<title>TSMM Benchmark Dashboard</title>
-<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
-<style>
-  :root {
-    --bg: #0f172a; --card: #1e293b; --border: #334155;
-    --text: #e2e8f0; --muted: #94a3b8;
-    --green: #22c55e; --yellow: #eab308; --red: #ef4444;
-    --blue: #3b82f6; --purple: #a855f7;
-  }
-  * { box-sizing: border-box; margin: 0; padding: 0; }
-  body { background: var(--bg); color: var(--text); font-family: 'Consolas','Menlo',monospace; font-size: 13px; }
-  header { padding: 16px 24px; border-bottom: 1px solid var(--border); display: flex; align-items: center; gap: 16px; }
-  header h1 { font-size: 18px; font-weight: 700; }
-  .badge { padding: 2px 8px; border-radius: 4px; font-size: 11px; font-weight: 600; }
-  .badge-green  { background: #14532d; color: var(--green); }
-  .badge-yellow { background: #713f12; color: var(--yellow); }
-  .badge-blue   { background: #1e3a5f; color: var(--blue); }
-  .badge-gray   { background: #1e293b; color: var(--muted); border: 1px solid var(--border); }
-  #status-dot { width: 10px; height: 10px; border-radius: 50%; background: var(--muted); display: inline-block; margin-right: 4px; }
-  #status-dot.live { background: var(--green); animation: pulse 1.5s infinite; }
-  @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:.4} }
-
-  main { padding: 20px 24px; }
-  .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-bottom: 20px; }
-  @media(max-width:900px){ .grid2 { grid-template-columns: 1fr; } }
-
-  .card { background: var(--card); border: 1px solid var(--border); border-radius: 8px; padding: 16px; }
-  .card h2 { font-size: 13px; color: var(--muted); margin-bottom: 12px; text-transform: uppercase; letter-spacing: .05em; }
-
-  /* Info panel */
-  .info-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(130px,1fr)); gap: 8px; }
-  .info-item { background: var(--bg); border-radius: 6px; padding: 8px 10px; }
-  .info-item .label { color: var(--muted); font-size: 11px; }
-  .info-item .value { color: var(--text); font-size: 14px; font-weight: 600; margin-top: 2px; }
-
-  /* Geomean chart */
-  .chart-wrap { position: relative; height: 180px; }
-
-  /* Results table */
-  .section-title { font-size: 14px; font-weight: 600; margin: 20px 0 10px; color: var(--text); }
-  .prob-header { display: flex; align-items: center; gap: 8px; margin: 14px 0 6px; }
-  .prob-header span { font-weight: 600; }
-
-  table { width: 100%; border-collapse: collapse; }
-  th { text-align: left; color: var(--muted); font-weight: 600; font-size: 11px;
-       text-transform: uppercase; padding: 6px 10px; border-bottom: 1px solid var(--border); }
-  td { padding: 6px 10px; border-bottom: 1px solid #1e2d40; white-space: nowrap; }
-  tr:last-child td { border-bottom: none; }
-  tr:hover td { background: #162032; }
-
-  .speedup-bar { display: flex; align-items: center; gap: 8px; }
-  .bar-track { flex: 1; max-width: 120px; height: 6px; background: #334155; border-radius: 3px; overflow: hidden; }
-  .bar-fill { height: 100%; border-radius: 3px; transition: width .4s; }
-
-  .correct-ok   { color: var(--green); }
-  .correct-fail { color: var(--red); font-weight: 700; }
-  .impl-ref     { color: var(--yellow); }
-
-  /* Footer */
-  footer { padding: 12px 24px; color: var(--muted); font-size: 11px; border-top: 1px solid var(--border); margin-top: 20px; }
-
-  /* Waiting state */
-  #waiting { display: none; text-align: center; padding: 60px; color: var(--muted); }
-  #waiting .spinner { font-size: 32px; animation: spin 1s linear infinite; display: inline-block; margin-bottom: 12px; }
-  @keyframes spin { from{transform:rotate(0)} to{transform:rotate(360deg)} }
-</style>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>TSMM Benchmark Dashboard</title>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+  <style>
+    :root {
+      --bg: #10131a;
+      --panel: #181d25;
+      --panel-2: #111722;
+      --border: #2d3440;
+      --text: #e7edf6;
+      --muted: #9aa7b7;
+      --green: #34d399;
+      --yellow: #fbbf24;
+      --red: #fb7185;
+      --blue: #60a5fa;
+      --cyan: #22d3ee;
+      --orange: #fb923c;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      color: var(--text);
+      background: var(--bg);
+      font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+      font-size: 13px;
+    }
+    header {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 14px 20px;
+      border-bottom: 1px solid var(--border);
+      background: #151a22;
+      position: sticky;
+      top: 0;
+      z-index: 5;
+    }
+    h1 { font-size: 17px; margin: 0 10px 0 0; }
+    main { padding: 18px 20px 28px; }
+    .badge {
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      padding: 3px 8px;
+      color: var(--muted);
+      background: var(--panel-2);
+      white-space: nowrap;
+    }
+    .badge.ok { color: var(--green); border-color: #1f6f4d; }
+    .badge.info { color: var(--blue); border-color: #315b9c; }
+    #status-dot {
+      width: 10px;
+      height: 10px;
+      border-radius: 999px;
+      background: var(--muted);
+      display: inline-block;
+    }
+    #status-dot.live { background: var(--green); animation: pulse 1.4s infinite; }
+    @keyframes pulse { 50% { opacity: .35; } }
+    .layout {
+      display: grid;
+      grid-template-columns: minmax(280px, 420px) 1fr;
+      gap: 14px;
+      align-items: start;
+    }
+    @media (max-width: 920px) { .layout { grid-template-columns: 1fr; } header { flex-wrap: wrap; } }
+    .panel {
+      background: var(--panel);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 14px;
+    }
+    .panel h2 {
+      color: var(--muted);
+      font-size: 12px;
+      text-transform: uppercase;
+      margin: 0 0 12px;
+      letter-spacing: .04em;
+    }
+    .info-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(130px, 1fr));
+      gap: 8px;
+    }
+    .info-item {
+      background: var(--panel-2);
+      border: 1px solid #242b36;
+      border-radius: 6px;
+      padding: 8px;
+      min-width: 0;
+    }
+    .label { color: var(--muted); font-size: 11px; margin-bottom: 4px; }
+    .value { font-size: 13px; overflow-wrap: anywhere; }
+    .chart-wrap { height: 230px; }
+    .problem { margin-top: 14px; }
+    .problem-head {
+      display: flex;
+      gap: 8px;
+      align-items: center;
+      flex-wrap: wrap;
+      margin-bottom: 10px;
+      font-weight: 700;
+    }
+    table { width: 100%; border-collapse: collapse; table-layout: fixed; }
+    th, td {
+      text-align: left;
+      border-bottom: 1px solid #262d38;
+      padding: 7px 8px;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    th { color: var(--muted); font-size: 11px; text-transform: uppercase; }
+    .speed-cell { display: flex; align-items: center; gap: 8px; min-width: 0; }
+    .track { height: 6px; flex: 1; background: #303844; border-radius: 999px; overflow: hidden; }
+    .fill { height: 100%; border-radius: 999px; }
+    .waiting {
+      text-align: center;
+      color: var(--muted);
+      padding: 70px 12px;
+    }
+    footer {
+      color: var(--muted);
+      border-top: 1px solid var(--border);
+      padding: 12px 20px;
+      font-size: 11px;
+    }
+  </style>
 </head>
 <body>
-<header>
-  <span id="status-dot"></span>
-  <h1>TSMM Benchmark Dashboard</h1>
-  <span id="header-host" class="badge badge-gray">—</span>
-  <span id="header-threads" class="badge badge-blue">— threads</span>
-  <span id="header-avx" class="badge badge-gray">AVX-512: ?</span>
-  <span id="header-blas" class="badge badge-gray">BLAS: ?</span>
-  <span style="margin-left:auto;color:var(--muted);font-size:11px;" id="last-update">—</span>
-</header>
+  <header>
+    <span id="status-dot"></span>
+    <h1>TSMM Benchmark Dashboard</h1>
+    <span id="host" class="badge">Host: -</span>
+    <span id="threads" class="badge info">Threads: -</span>
+    <span id="layout" class="badge">Layout: -</span>
+    <span id="blas" class="badge">BLAS: -</span>
+    <span id="avx" class="badge">AVX-512: -</span>
+    <span id="updated" class="badge" style="margin-left:auto">Updated: -</span>
+  </header>
 
-<main>
-  <div id="waiting">
-    <div class="spinner">⟳</div>
-    <div>等待 benchmark 运行中…</div>
-    <div style="margin-top:8px;font-size:11px;">先运行 <code>make run</code> 或 <code>./benchmark</code></div>
-  </div>
-
-  <div id="content" style="display:none">
-    <div class="grid2">
-      <!-- System info -->
-      <div class="card">
-        <h2>系统信息</h2>
-        <div class="info-grid" id="info-grid"></div>
-      </div>
-
-      <!-- Geometric mean chart -->
-      <div class="card">
-        <h2>几何平均加速比（必测问题）</h2>
-        <div class="chart-wrap"><canvas id="geomean-chart"></canvas></div>
-      </div>
+  <main>
+    <div id="waiting" class="waiting">
+      <h2>等待 benchmark 结果</h2>
+      <p>运行 <code>make run-required</code> 或 <code>./benchmark --output web/results.json</code> 后页面会自动刷新。</p>
     </div>
 
-    <!-- Per-problem tables -->
-    <div id="tables"></div>
-  </div>
-</main>
+    <div id="content" style="display:none">
+      <div class="layout">
+        <section class="panel">
+          <h2>System</h2>
+          <div id="info" class="info-grid"></div>
+        </section>
+        <section class="panel">
+          <h2>Geometric Mean Speedup</h2>
+          <div class="chart-wrap"><canvas id="gm-chart"></canvas></div>
+        </section>
+      </div>
+      <section id="tables"></section>
+    </div>
+  </main>
 
-<footer id="footer">最后更新：— | 每 3 秒自动刷新</footer>
+  <footer id="footer">Polling every 3 seconds.</footer>
 
-<script>
-// ──────────────────────────────────────────────
-//  Color helpers
-// ──────────────────────────────────────────────
-function speedupColor(s) {
-  if (s >= 1.5) return '#22c55e';
-  if (s >= 0.9) return '#eab308';
-  return '#ef4444';
-}
-function implColor(name) {
-  const map = {
-    reference: '#eab308', naive: '#64748b', openmp: '#3b82f6',
-    blocked: '#a855f7', avx512: '#06b6d4', avx512_omp: '#22c55e', opt: '#f97316'
-  };
-  return map[name] || '#94a3b8';
-}
+  <script>
+    const colors = {
+      reference: '#fbbf24',
+      naive: '#9aa7b7',
+      openmp: '#60a5fa',
+      blocked: '#c084fc',
+      avx512: '#22d3ee',
+      avx512_omp: '#34d399',
+      opt: '#fb923c'
+    };
+    let chart = null;
 
-// ──────────────────────────────────────────────
-//  Geomean chart (persistent across updates)
-// ──────────────────────────────────────────────
-let geomeanChart = null;
-
-function renderGeomean(data) {
-  const gm = data.geomean_speedup || {};
-  const labels = Object.keys(gm).filter(k => k !== 'reference');
-  const values = labels.map(k => gm[k]);
-  const colors = labels.map(implColor);
-
-  if (!geomeanChart) {
-    const ctx = document.getElementById('geomean-chart').getContext('2d');
-    geomeanChart = new Chart(ctx, {
-      type: 'bar',
-      data: { labels, datasets: [{ data: values, backgroundColor: colors, borderRadius: 4 }] },
-      options: {
-        responsive: true, maintainAspectRatio: false,
-        plugins: { legend: { display: false },
-          tooltip: { callbacks: { label: ctx => ` ${ctx.raw.toFixed(3)} ×` } } },
-        scales: {
-          y: { beginAtZero: true, grid: { color: '#334155' }, ticks: { color: '#94a3b8' },
-               title: { display: true, text: 'Speedup vs reference', color: '#94a3b8' } },
-          x: { grid: { display: false }, ticks: { color: '#e2e8f0' } }
-        }
-      }
-    });
-    // Reference line at y=1
-    geomeanChart.options.plugins.annotation = undefined; // no annotation plugin needed
-  } else {
-    geomeanChart.data.labels = labels;
-    geomeanChart.data.datasets[0].data = values;
-    geomeanChart.data.datasets[0].backgroundColor = colors;
-    geomeanChart.update('none');
-  }
-}
-
-// ──────────────────────────────────────────────
-//  Per-problem tables
-// ──────────────────────────────────────────────
-function renderTables(data) {
-  const container = document.getElementById('tables');
-  container.innerHTML = '';
-
-  const title = document.createElement('div');
-  title.className = 'section-title';
-  title.textContent = '各问题详细结果';
-  container.appendChild(title);
-
-  const problems = data.problems || [];
-  problems.forEach(prob => {
-    // Compute max speedup for bar scaling
-    const maxSpeedup = Math.max(2.0, ...prob.impls.map(r => r.speedup || 0));
-
-    const section = document.createElement('div');
-    section.className = 'card';
-    section.style.marginBottom = '14px';
-
-    const header = document.createElement('div');
-    header.className = 'prob-header';
-    header.innerHTML = `
-      <span>${prob.name}</span>
-      <span class="badge badge-gray">m=${prob.m} n=${prob.n} k=${prob.k}</span>
-      ${prob.required ? '<span class="badge badge-green">必测</span>' : '<span class="badge badge-gray">可选</span>'}
-    `;
-    section.appendChild(header);
-
-    const table = document.createElement('table');
-    table.innerHTML = `
-      <thead>
-        <tr>
-          <th>实现</th>
-          <th>时间 (ms)</th>
-          <th>GFLOPS</th>
-          <th>加速比</th>
-          <th>正确性</th>
-        </tr>
-      </thead>
-    `;
-    const tbody = document.createElement('tbody');
-    prob.impls.forEach(r => {
-      const isRef = r.name === 'reference';
-      const barWidth = Math.min(100, (r.speedup / maxSpeedup) * 100);
-      const tr = document.createElement('tr');
-      tr.innerHTML = `
-        <td style="color:${implColor(r.name)};font-weight:600">${r.name}</td>
-        <td>${r.time_ms.toFixed(3)}</td>
-        <td>${r.gflops.toFixed(2)}</td>
-        <td>
-          <div class="speedup-bar">
-            <span style="color:${speedupColor(r.speedup)};min-width:48px">${r.speedup.toFixed(3)}×</span>
-            <div class="bar-track">
-              <div class="bar-fill" style="width:${barWidth}%;background:${speedupColor(r.speedup)}"></div>
-            </div>
-          </div>
-        </td>
-        <td class="${r.correct ? 'correct-ok' : 'correct-fail'}">${r.correct ? '✓' : '✗ WRONG'}</td>
-      `;
-      tbody.appendChild(tr);
-    });
-    table.appendChild(tbody);
-    section.appendChild(table);
-    container.appendChild(section);
-  });
-}
-
-// ──────────────────────────────────────────────
-//  System info panel
-// ──────────────────────────────────────────────
-function renderInfo(data) {
-  const grid = document.getElementById('info-grid');
-
-  // Collect stats
-  const allImpls = {};
-  (data.problems || []).forEach(p => {
-    p.impls.forEach(r => {
-      if (!allImpls[r.name]) allImpls[r.name] = [];
-      if (p.required) allImpls[r.name].push(r.speedup);
-    });
-  });
-  const bestImpl = Object.entries(data.geomean_speedup || {})
-    .reduce((a, b) => b[1] > a[1] ? b : a, ['—', 0]);
-
-  const items = [
-    { label: 'Host',     value: data.hostname || '—' },
-    { label: 'Threads',  value: data.n_threads || '—' },
-    { label: 'AVX-512',  value: data.avx512 ? 'Yes' : 'No' },
-    { label: 'BLAS',     value: (data.blas || '—').toUpperCase() },
-    { label: 'Best impl',  value: bestImpl[0] },
-    { label: 'Best geomean', value: bestImpl[1] > 0 ? bestImpl[1].toFixed(3) + '×' : '—' },
-    { label: 'Problems done', value: (data.problems || []).length },
-    { label: 'Timestamp', value: data.timestamp || '—' },
-  ];
-
-  grid.innerHTML = items.map(it => `
-    <div class="info-item">
-      <div class="label">${it.label}</div>
-      <div class="value">${it.value}</div>
-    </div>`).join('');
-
-  // Update header badges
-  document.getElementById('header-host').textContent = data.hostname || '—';
-  document.getElementById('header-threads').textContent = (data.n_threads || '?') + ' threads';
-  document.getElementById('header-avx').textContent = 'AVX-512: ' + (data.avx512 ? 'Yes' : 'No');
-  document.getElementById('header-avx').className = 'badge ' + (data.avx512 ? 'badge-green' : 'badge-gray');
-  document.getElementById('header-blas').textContent = 'BLAS: ' + (data.blas || '?').toUpperCase();
-}
-
-// ──────────────────────────────────────────────
-//  Polling loop
-// ──────────────────────────────────────────────
-let lastMtime = null;
-
-async function fetchAndRender() {
-  try {
-    const resp = await fetch('/api/results?' + Date.now());
-    const data = await resp.json();
-
-    if (data.status === 'waiting' || !data.problems) {
-      document.getElementById('waiting').style.display = 'block';
-      document.getElementById('content').style.display = 'none';
-      document.getElementById('status-dot').className = '';
-      return;
+    function colorFor(name) {
+      return colors[name] || '#9aa7b7';
     }
 
-    document.getElementById('waiting').style.display = 'none';
-    document.getElementById('content').style.display = 'block';
-    document.getElementById('status-dot').className = 'live';
+    function speedColor(v) {
+      if (v >= 1.05) return '#34d399';
+      if (v >= 0.90) return '#fbbf24';
+      return '#fb7185';
+    }
 
-    renderInfo(data);
-    renderGeomean(data);
-    renderTables(data);
+    function fmt(v, digits = 3) {
+      return Number.isFinite(v) ? v.toFixed(digits) : '-';
+    }
 
-    const now = new Date().toLocaleTimeString('zh-CN');
-    document.getElementById('last-update').textContent = '最后更新: ' + now;
-    document.getElementById('footer').textContent =
-      '最后更新: ' + now + ' | 每 3 秒自动刷新';
+    function renderInfo(data) {
+      const gm = data.geomean_speedup || {};
+      const best = Object.entries(gm).sort((a, b) => b[1] - a[1])[0] || ['-', 0];
+      const items = [
+        ['Host', data.hostname || '-'],
+        ['Threads', data.n_threads || '-'],
+        ['Layout', data.layout || '-'],
+        ['BLAS', (data.blas || '-').toUpperCase()],
+        ['AVX-512', data.avx512 ? 'Yes' : 'No'],
+        ['Best impl', best[0]],
+        ['Best geomean', best[1] ? `${fmt(best[1])}x` : '-'],
+        ['Problems done', (data.problems || []).length],
+        ['Timestamp', data.timestamp || '-']
+      ];
+      document.getElementById('info').innerHTML = items.map(([k, v]) => `
+        <div class="info-item"><div class="label">${k}</div><div class="value">${v}</div></div>
+      `).join('');
 
-  } catch (e) {
-    console.warn('fetch error:', e);
-    document.getElementById('status-dot').className = '';
-  }
-}
+      document.getElementById('host').textContent = `Host: ${data.hostname || '-'}`;
+      document.getElementById('threads').textContent = `Threads: ${data.n_threads || '-'}`;
+      document.getElementById('layout').textContent = `Layout: ${data.layout || '-'}`;
+      document.getElementById('blas').textContent = `BLAS: ${(data.blas || '-').toUpperCase()}`;
+      document.getElementById('avx').textContent = `AVX-512: ${data.avx512 ? 'Yes' : 'No'}`;
+      document.getElementById('avx').className = `badge ${data.avx512 ? 'ok' : ''}`;
+    }
 
-// Initial load + interval
-fetchAndRender();
-setInterval(fetchAndRender, 3000);
-</script>
+    function renderChart(data) {
+      const gm = data.geomean_speedup || {};
+      const labels = Object.keys(gm);
+      const values = labels.map(k => gm[k]);
+      const dataset = { data: values, backgroundColor: labels.map(colorFor), borderRadius: 4 };
+      if (!chart) {
+        chart = new Chart(document.getElementById('gm-chart'), {
+          type: 'bar',
+          data: { labels, datasets: [dataset] },
+          options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: { legend: { display: false } },
+            scales: {
+              y: { beginAtZero: true, ticks: { color: '#9aa7b7' }, grid: { color: '#2d3440' } },
+              x: { ticks: { color: '#e7edf6' }, grid: { display: false } }
+            }
+          }
+        });
+      } else {
+        chart.data.labels = labels;
+        chart.data.datasets[0] = dataset;
+        chart.update('none');
+      }
+    }
+
+    function renderTables(data) {
+      const root = document.getElementById('tables');
+      root.innerHTML = '';
+      (data.problems || []).forEach(problem => {
+        const maxSpeedup = Math.max(1.5, ...problem.impls.map(x => x.speedup || 0));
+        const section = document.createElement('section');
+        section.className = 'panel problem';
+        section.innerHTML = `
+          <div class="problem-head">
+            <span>${problem.name}</span>
+            <span class="badge">m=${problem.m} n=${problem.n} k=${problem.k}</span>
+            <span class="badge ${problem.required ? 'ok' : ''}">${problem.required ? 'Required' : 'Optional'}</span>
+          </div>
+          <table>
+            <thead>
+              <tr>
+                <th>Impl</th><th>Time ms</th><th>GFLOPS</th><th>Speedup</th><th>Correct</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${problem.impls.map(row => {
+                const width = Math.min(100, (row.speedup || 0) / maxSpeedup * 100);
+                return `
+                  <tr>
+                    <td style="color:${colorFor(row.name)};font-weight:700">${row.name}</td>
+                    <td>${fmt(row.time_ms)}</td>
+                    <td>${fmt(row.gflops, 2)}</td>
+                    <td>
+                      <div class="speed-cell">
+                        <span style="color:${speedColor(row.speedup)};width:58px">${fmt(row.speedup)}x</span>
+                        <span class="track"><span class="fill" style="width:${width}%;background:${speedColor(row.speedup)}"></span></span>
+                      </div>
+                    </td>
+                    <td style="color:${row.correct ? '#34d399' : '#fb7185'}">${row.correct ? 'OK' : 'WRONG'}</td>
+                  </tr>`;
+              }).join('')}
+            </tbody>
+          </table>`;
+        root.appendChild(section);
+      });
+    }
+
+    async function refresh() {
+      try {
+        const res = await fetch(`/api/results?ts=${Date.now()}`);
+        const data = await res.json();
+        if (data.status === 'waiting' || !data.problems) {
+          document.getElementById('waiting').style.display = 'block';
+          document.getElementById('content').style.display = 'none';
+          document.getElementById('status-dot').className = '';
+          return;
+        }
+        document.getElementById('waiting').style.display = 'none';
+        document.getElementById('content').style.display = 'block';
+        document.getElementById('status-dot').className = 'live';
+        renderInfo(data);
+        renderChart(data);
+        renderTables(data);
+        const now = new Date().toLocaleTimeString('zh-CN');
+        document.getElementById('updated').textContent = `Updated: ${now}`;
+        document.getElementById('footer').textContent = `Last refresh: ${now}. Polling every 3 seconds.`;
+      } catch (err) {
+        document.getElementById('status-dot').className = '';
+        console.warn(err);
+      }
+    }
+
+    refresh();
+    setInterval(refresh, 3000);
+  </script>
 </body>
 </html>
