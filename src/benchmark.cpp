@@ -247,6 +247,9 @@ static void usage(const char* argv0) {
 }
 
 int main(int argc, char** argv) {
+    std::setvbuf(stdout, nullptr, _IOLBF, 0);
+    std::setvbuf(stderr, nullptr, _IONBF, 0);
+
     std::string out_path;
     std::string out_dir = "web/results";
     bool required_only = false;

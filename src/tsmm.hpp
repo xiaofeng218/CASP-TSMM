@@ -57,8 +57,4 @@ inline std::size_t idx_c(Layout layout, int i, int j, int m, int n) {
 
 void tsmm_reference(int m, int n, int k, const double* A, const double* B, double* C, Layout layout);
 void tsmm_naive(int m, int n, int k, const double* A, const double* B, double* C, Layout layout);
-void tsmm_openmp(int m, int n, int k, const double* A, const double* B, double* C, Layout layout);
-void tsmm_blocked(int m, int n, int k, const double* A, const double* B, double* C, Layout layout);
-void tsmm_avx512(int m, int n, int k, const double* A, const double* B, double* C, Layout layout);
-void tsmm_avx512_omp(int m, int n, int k, const double* A, const double* B, double* C, Layout layout);
 void tsmm_opt(int m, int n, int k, const double* A, const double* B, double* C, Layout layout);

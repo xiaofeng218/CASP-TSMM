@@ -44,11 +44,8 @@ CASP-TSMM/
 |   |-- tsmm_registry.cpp   # 算子自动注册
 |   |-- reference.cpp       # MKL/OpenBLAS dgemm 参考实现，或内置 fallback
 |   `-- tsmm/
-|       |-- naive.cpp           # 串行基线
-|       |-- openmp_kernel.cpp   # OpenMP 并行基线
-|       |-- blocked.cpp         # 分块 OpenMP 算子
-|       |-- avx512.cpp          # AVX-512 算子
-|       `-- opt.cpp             # 综合优化算子
+|       |-- naive.cpp           # 简单串行参考实现，不注册到 benchmark
+|       `-- opt.cpp             # 综合优化算子，默认提交算子
 |-- scripts/
 |   |-- collect_gflops.py   # 汇总 GFLOPS 到 CSV/JSON
 |   |-- run_local.sh        # Linux 本地运行脚本
@@ -74,13 +71,18 @@ benchmark.exe
 
 | 名称 | 说明 |
 | --- | --- |
-| `reference` | 使用 MKL/OpenBLAS `dgemm` 的参考实现；`BLAS=none` 时使用内置 fallback |
-| `naive` | 串行三重循环 TSMM |
-| `openmp` | 基于 OpenMP 的并行版本 |
-| `blocked` | cache blocking + OpenMP 版本 |
-| `avx512` | AVX-512 向量化版本 |
-| `avx512_omp` | AVX-512 + OpenMP 版本 |
-| `opt` | 综合优化版本 |
+| `reference` | 使用 MKL/OpenBLAS `dgemm` 的参考实现；总是作为基准运行 |
+| `opt` | 默认提交的综合优化版本，位于 `src/tsmm/opt.cpp` |
+| `naive` | 简单串行参考实现，位于 `src/tsmm/naive.cpp`，不注册到 benchmark |
+
+默认 benchmark 只会测试：
+
+```text
+reference
+opt
+```
+
+`src/tsmm/naive.cpp` 只作为参考模板保留，没有调用 `REGISTER_TSMM_IMPL`，所以不会出现在默认结果里。其他同学新增算子时，只需要新增 `.cpp` 并调用 `REGISTER_TSMM_IMPL`，benchmark 就会自动把它和 `reference`、`opt` 一起测试。
 
 ## 集群编译
 
@@ -259,13 +261,22 @@ results_col_*.json   # col-major 原始结果
 
 大规模任务会自动限制预热和正式计时次数，避免运行时间过长。
 
+默认只测试：
+
+```text
+reference
+opt
+```
+
+如果要添加新的实现，把新的 `.cpp` 放到 `src/tsmm/` 并注册即可，Makefile 会自动编译。
+
 手动 smoke test 示例：
 
 ```bash
 ./obj/benchmark --required-only --layout row --warmup 1 --runs 1
 ```
 
-正式性能测试建议使用 Slurm 脚本，而不是在登录节点直接运行。
+正式性能测试请使用 Slurm 脚本，而不是在登录节点直接运行。
 
 ## 本地运行
 
