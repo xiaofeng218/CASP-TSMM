@@ -27,8 +27,8 @@
 namespace {
 
 constexpr int L2_BYTES = 1024 * 1024;
-constexpr int TILE_M  = 64;
-constexpr int TILE_N  = 256;
+constexpr int TILE_M  = 16;
+constexpr int TILE_N  = 64;
 constexpr int SIMD_W  = 8;
 
 int tune_bk(int tm, int tn, int k) {
@@ -158,17 +158,18 @@ void final_tiny_col(int m, int n, int k, const double* A, const double* B, doubl
 // =====================================================================
 
 void final_square_row(int m, int n, int k, const double* A, const double* B, double* C) {
+    const int BK = tune_bk(TILE_M, TILE_N, k);
+    if (k <= 4 * BK) { final_general_row(m, n, k, A, B, C); return; }
+
     std::memset(C, 0, static_cast<std::size_t>(m) * n * sizeof(double));
-    const int TM = TILE_M, TN = TILE_N;
-    const int nbi = (m + TM - 1) / TM;
-    const int nbj = (n + TN - 1) / TN;
-    const int BK  = tune_bk(TM, TN, k);
+    const int nbi = (m + TILE_M - 1) / TILE_M;
+    const int nbj = (n + TILE_N - 1) / TILE_N;
 
 #pragma omp parallel for collapse(2) schedule(static)
     for (int bi = 0; bi < nbi; ++bi) {
         for (int bj = 0; bj < nbj; ++bj) {
-            const int i0 = bi * TM, j0 = bj * TN;
-            const int imax = std::min(i0 + TM, m), jmax = std::min(j0 + TN, n);
+            const int i0 = bi * TILE_M, j0 = bj * TILE_N;
+            const int imax = std::min(i0 + TILE_M, m), jmax = std::min(j0 + TILE_N, n);
             const int tm = imax - i0, tn = jmax - j0;
             for (int kb = 0; kb < k; kb += BK) {
                 const int kbl = std::min(BK, k - kb);
@@ -227,16 +228,17 @@ void final_square_row(int m, int n, int k, const double* A, const double* B, dou
 }
 
 void final_square_col(int m, int n, int k, const double* A, const double* B, double* C) {
+    const int BK = tune_bk(TILE_M, TILE_N, k);
+    if (k <= 4 * BK) { final_general_col(m, n, k, A, B, C); return; }
+
     std::memset(C, 0, static_cast<std::size_t>(m) * n * sizeof(double));
-    const int TM = TILE_M, TN = TILE_N;
-    const int nbi = (m + TM - 1) / TM, nbj = (n + TN - 1) / TN;
-    const int BK  = tune_bk(TM, TN, k);
+    const int nbi = (m + TILE_M - 1) / TILE_M, nbj = (n + TILE_N - 1) / TILE_N;
 
 #pragma omp parallel for collapse(2) schedule(static)
     for (int bi = 0; bi < nbi; ++bi) {
         for (int bj = 0; bj < nbj; ++bj) {
-            const int i0 = bi * TM, j0 = bj * TN;
-            const int imax = std::min(i0 + TM, m), jmax = std::min(j0 + TN, n);
+            const int i0 = bi * TILE_M, j0 = bj * TILE_N;
+            const int imax = std::min(i0 + TILE_M, m), jmax = std::min(j0 + TILE_N, n);
             const int tm = imax - i0, tn = jmax - j0;
             for (int kb = 0; kb < k; kb += BK) {
                 const int kbl = std::min(BK, k - kb);
@@ -266,6 +268,7 @@ void final_general_row(int m, int n, int k, const double* A, const double* B, do
     const int TM = TILE_M, TN = TILE_N;
     const int nbi = (m + TM - 1) / TM, nbj = (n + TN - 1) / TN;
     const int BK  = tune_bk(TM, TN, k);
+    const bool do_block = (k > 4 * BK);
 
 #pragma omp parallel for collapse(2) schedule(static)
     for (int bi = 0; bi < nbi; ++bi) {
@@ -273,9 +276,21 @@ void final_general_row(int m, int n, int k, const double* A, const double* B, do
             const int i0 = bi * TM, j0 = bj * TN;
             const int imax = std::min(i0 + TM, m), jmax = std::min(j0 + TN, n);
             const int tm = imax - i0, tn = jmax - j0;
-            for (int kb = 0; kb < k; kb += BK) {
-                const int kbe = std::min(kb + BK, k);
-                for (int l = kb; l < kbe; ++l) {
+            if (do_block) {
+                for (int kb = 0; kb < k; kb += BK) {
+                    const int kbe = std::min(kb + BK, k);
+                    for (int l = kb; l < kbe; ++l) {
+                        const double* ar = A + static_cast<std::size_t>(l) * m;
+                        const double* br = B + static_cast<std::size_t>(l) * n;
+                        for (int i = 0; i < tm; ++i) {
+                            const double av = ar[i0 + i];
+                            double* cr = C + static_cast<std::size_t>(i0 + i) * n + j0;
+                            for (int j = 0; j < tn; ++j) cr[j] += av * br[j0 + j];
+                        }
+                    }
+                }
+            } else {
+                for (int l = 0; l < k; ++l) {
                     const double* ar = A + static_cast<std::size_t>(l) * m;
                     const double* br = B + static_cast<std::size_t>(l) * n;
                     for (int i = 0; i < tm; ++i) {
@@ -294,6 +309,7 @@ void final_general_col(int m, int n, int k, const double* A, const double* B, do
     const int TM = TILE_M, TN = TILE_N;
     const int nbi = (m + TM - 1) / TM, nbj = (n + TN - 1) / TN;
     const int BK  = tune_bk(TM, TN, k);
+    const bool do_block = (k > 4 * BK);
 
 #pragma omp parallel for collapse(2) schedule(static)
     for (int bi = 0; bi < nbi; ++bi) {
@@ -301,14 +317,22 @@ void final_general_col(int m, int n, int k, const double* A, const double* B, do
             const int i0 = bi * TM, j0 = bj * TN;
             const int imax = std::min(i0 + TM, m), jmax = std::min(j0 + TN, n);
             const int tm = imax - i0, tn = jmax - j0;
-            for (int kb = 0; kb < k; kb += BK) {
-                const int kbe = std::min(kb + BK, k);
-                for (int l = kb; l < kbe; ++l)
+            if (do_block) {
+                for (int kb = 0; kb < k; kb += BK) {
+                    const int kbe = std::min(kb + BK, k);
+                    for (int l = kb; l < kbe; ++l)
+                        for (int i = 0; i < tm; ++i) {
+                            const double av = A[static_cast<std::size_t>(i0 + i) * k + l];
+                            for (int j = 0; j < tn; ++j)
+                                C[static_cast<std::size_t>(j0 + j) * m + (i0 + i)] += av * B[static_cast<std::size_t>(j0 + j) * k + l];
+                        }
+                }
+            } else {
+                for (int l = 0; l < k; ++l)
                     for (int i = 0; i < tm; ++i) {
                         const double av = A[static_cast<std::size_t>(i0 + i) * k + l];
                         for (int j = 0; j < tn; ++j)
-                            C[static_cast<std::size_t>(j0 + j) * m + (i0 + i)] +=
-                                av * B[static_cast<std::size_t>(j0 + j) * k + l];
+                            C[static_cast<std::size_t>(j0 + j) * m + (i0 + i)] += av * B[static_cast<std::size_t>(j0 + j) * k + l];
                     }
             }
         }

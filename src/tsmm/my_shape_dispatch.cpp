@@ -23,7 +23,7 @@
 
 namespace {
 
-constexpr int TILE_M = 64, TILE_N = 256;
+constexpr int TILE_M = 16, TILE_N = 64;
 constexpr int L2_D   = 1024 * 1024 / 8;
 constexpr int PANEL  = 2048;
 
