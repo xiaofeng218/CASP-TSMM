@@ -48,8 +48,8 @@ int choose_jb(int n) {
 // 8×16 tile × 2 accumulators/row × 8 rows = 16 ZMM regs → fits.
 // =====================================================================
 
-void blocking_tiled_row(int m, int n, int k,
-                         const double* A, const double* B, double* C) {
+static void blocking_tiled_row(int m, int n, int k,
+                               const double* A, const double* B, double* C) {
     std::memset(C, 0, static_cast<std::size_t>(m) * n * sizeof(double));
 
     constexpr int IB = 8;
@@ -129,8 +129,8 @@ void blocking_tiled_row(int m, int n, int k,
 // For each strip of j, accumulate into local registers, write back
 // =====================================================================
 
-void blocking_tiled_col(int m, int n, int k,
-                         const double* A, const double* B, double* C) {
+static void blocking_tiled_col(int m, int n, int k,
+                               const double* A, const double* B, double* C) {
     std::memset(C, 0, static_cast<std::size_t>(m) * n * sizeof(double));
 
     const int IB = choose_ib(m);
@@ -203,8 +203,8 @@ REGISTER_TSMM_IMPL("my_blocking", tsmm_my_blocking);
 
 static constexpr int L2_D = 1024 * 1024 / 8;
 
-void blocking_tiled_row_packed(int m, int n, int k,
-                                const double* A, const double* B, double* C) {
+static void blocking_tiled_row_packed(int m, int n, int k,
+                                      const double* A, const double* B, double* C) {
     const int IB = choose_ib(m);
     int BK = (L2_D - IB * 16) / (IB + 16);
     if (BK < 8) BK = 8;

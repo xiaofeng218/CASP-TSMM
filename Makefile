@@ -3,7 +3,7 @@ CXX ?= g++
 OBJDIR ?= obj
 TARGET = $(OBJDIR)/benchmark
 
-CXXFLAGS = -O3 -march=native -std=c++17 -ffast-math -fopenmp
+CXXFLAGS = -O3 -march=native -std=c++17 -ffast-math -fopenmp -ipo
 CXXFLAGS += -Wall -Wextra -Wno-unused-parameter
 LDFLAGS = -fopenmp -lm -lpthread
 CXXLIBS ?= -lstdc++
