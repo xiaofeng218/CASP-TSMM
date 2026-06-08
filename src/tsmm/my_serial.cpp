@@ -33,26 +33,24 @@ static void tsmm_my_serial_row(int m, int n, int k,
 
 static void tsmm_my_serial_col(int m, int n, int k,
                                 const double* A, const double* B, double* C) {
-    // ColMajor: A[m][k] stored column-major, A[l][i] = A[i*k + l]
-    //           B[n][k] stored column-major, B[l][j] = B[j*k + l]
-    //           C[m][n] stored column-major, C[i][j] = C[j*m + i]
+    // ColMajor: C[j][i] = C[j*m+i], A[i][l] = A[i*k+l], B[j][l] = B[j*k+l]
     //
-    // C = A^T * B where A is k×m col-major means A's rows are contiguous.
-    // After transposition: A^T is m×k, so A^T[i][l] = A[l][i] = A[i*k + l]
-    // The inner product: C[i][j] = sum_l A[i*k + l] * B[j*k + l]
-    //
-    // Best loop: keep l outermost to stream through k,
-    //            j innermost for contiguous write on C (j*m + i: stride = m).
+    // Key insight for col-major: A and B are BOTH contiguous along k (stride 1).
+    // So k MUST be the innermost loop for efficient access.
+    // Outer loops: j (C write stride=m) and i.
 
     std::memset(C, 0, static_cast<std::size_t>(m) * n * sizeof(double));
 
-    for (int l = 0; l < k; ++l) {
+    for (int j = 0; j < n; ++j) {
+        double* c_col = C + static_cast<std::size_t>(j) * m;
+        const double* b_col = B + static_cast<std::size_t>(j) * k;
         for (int i = 0; i < m; ++i) {
-            const double a_val = A[static_cast<std::size_t>(i) * k + l];
-            for (int j = 0; j < n; ++j) {
-                C[static_cast<std::size_t>(j) * m + i] +=
-                    a_val * B[static_cast<std::size_t>(j) * k + l];
+            double sum = 0.0;
+            const double* a_col = A + static_cast<std::size_t>(i) * k;
+            for (int l = 0; l < k; ++l) {
+                sum += a_col[l] * b_col[l];  // stride-1 on both!
             }
+            c_col[i] = sum;
         }
     }
 }
@@ -104,13 +102,16 @@ static void tsmm_my_serial_reg_col(int m, int n, int k,
                                     const double* A, const double* B, double* C) {
     std::vector<double> C_local(static_cast<std::size_t>(m) * n, 0.0);
 
-    for (int l = 0; l < k; ++l) {
+    for (int j = 0; j < n; ++j) {
+        double* c_col = C_local.data() + static_cast<std::size_t>(j) * m;
+        const double* b_col = B + static_cast<std::size_t>(j) * k;
         for (int i = 0; i < m; ++i) {
-            const double a_val = A[static_cast<std::size_t>(i) * k + l];
-            for (int j = 0; j < n; ++j) {
-                C_local[static_cast<std::size_t>(j) * m + i] +=
-                    a_val * B[static_cast<std::size_t>(j) * k + l];
+            double sum = 0.0;
+            const double* a_col = A + static_cast<std::size_t>(i) * k;
+            for (int l = 0; l < k; ++l) {
+                sum += a_col[l] * b_col[l];
             }
+            c_col[i] = sum;
         }
     }
 
