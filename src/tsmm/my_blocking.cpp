@@ -66,8 +66,9 @@ void blocking_tiled_row(int m, int n, int k,
             const int jlen = std::min(JB, n - j0);
 
 #ifdef __AVX512F__
-            if (jlen >= 8) {
-                // Two accumulators per i-row — identical to opt's acc0/acc1
+            if (jlen == 8 || jlen >= 16) {
+                // Optimized path for full 8-wide or 16-wide tiles.
+                // Two accumulators per i-row — identical to opt's acc0/acc1.
                 __m512d acc0[IB];
                 __m512d acc1[IB];
                 for (int ii = 0; ii < ilen; ++ii) {
@@ -89,15 +90,17 @@ void blocking_tiled_row(int m, int n, int k,
                     }
                 }
 
-                // Write-back with masked stores for tail columns
+                // Write-back
                 for (int ii = 0; ii < ilen; ++ii) {
                     double* c_row = C + static_cast<std::size_t>(i0 + ii) * n + j0;
-                    _mm512_storeu_pd(c_row, acc0[ii]);
-                    if (jlen >= 16) {
+                    if (jlen == 8) {
+                        _mm512_storeu_pd(c_row, acc0[ii]);
+                    } else {
+                        _mm512_storeu_pd(c_row, acc0[ii]);
                         const int rem = jlen - 16;
-                        if (rem == 8)
+                        if (rem == 0)
                             _mm512_storeu_pd(c_row + 8, acc1[ii]);
-                        else if (rem > 0)
+                        else
                             _mm512_mask_storeu_pd(c_row + 8,
                                 static_cast<__mmask8>((1u << rem) - 1), acc1[ii]);
                     }
@@ -105,7 +108,7 @@ void blocking_tiled_row(int m, int n, int k,
                 continue;
             }
 #endif
-            // Fallback for tiny tiles (jlen < 8): scalar
+            // Scalar fallback for irregular jlen (1..7, 9..15):
             for (int ii = 0; ii < ilen; ++ii) {
                 double* c_row = C + static_cast<std::size_t>(i0 + ii) * n + j0;
                 for (int l = 0; l < k; ++l) {
