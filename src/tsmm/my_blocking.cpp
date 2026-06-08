@@ -203,7 +203,7 @@ static constexpr int L2_D = 1024 * 1024 / 8;
 void blocking_tiled_row_packed(int m, int n, int k,
                                 const double* A, const double* B, double* C) {
     const int IB = choose_ib(m);
-    const int BK = (L2_D - IB * 16) / (IB + 16);
+    int BK = (L2_D - IB * 16) / (IB + 16);
     if (BK < 8) BK = 8;
     BK = (BK / 8) * 8;
     if (BK > k) BK = k;
