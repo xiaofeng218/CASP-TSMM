@@ -41,15 +41,19 @@ int choose_jb(int n) {
 
 
 // =====================================================================
-// RowMajor: 16-wide n-strip register-blocked kernel
+// RowMajor: opt-compatible 8×16 register-blocked kernel
+//
+// Uses the exact same structure as opt's row_tile_i8_j16 but with
+// masked tail stores instead of scalar fallback.
+// 8×16 tile × 2 accumulators/row × 8 rows = 16 ZMM regs → fits.
 // =====================================================================
 
 void blocking_tiled_row(int m, int n, int k,
                          const double* A, const double* B, double* C) {
     std::memset(C, 0, static_cast<std::size_t>(m) * n * sizeof(double));
 
-    const int IB = choose_ib(m);
-    const int JB = choose_jb(n);
+    constexpr int IB = 8;
+    constexpr int JB = 16;
     const int nbi = (m + IB - 1) / IB;
     const int nbj = (n + JB - 1) / JB;
 
@@ -62,59 +66,55 @@ void blocking_tiled_row(int m, int n, int k,
             const int jlen = std::min(JB, n - j0);
 
 #ifdef __AVX512F__
-            // Process n-dimension in 16-wide strips.
-            // Each strip uses at most ilen×2 ≤ 16×2 = 32 ZMM regs.
-            // This is the critical constraint: prevents register spilling.
-            for (int js = 0; js < jlen; js += 16) {
-                const int js_len = std::min(16, jlen - js);
-                const int nacc   = (js_len + 7) / 8;  // 1 or 2
-
-                // Accumulators: ilen rows × nacc registers — lives in ZMM file
-                __m512d acc[32];  // ilen≤16, nacc≤2 → max 32
-                for (int ii = 0; ii < ilen; ++ii)
-                    for (int a = 0; a < nacc; ++a)
-                        acc[ii * nacc + a] = _mm512_setzero_pd();
+            if (jlen >= 8) {
+                // Two accumulators per i-row — identical to opt's acc0/acc1
+                __m512d acc0[IB];
+                __m512d acc1[IB];
+                for (int ii = 0; ii < ilen; ++ii) {
+                    acc0[ii] = _mm512_setzero_pd();
+                    acc1[ii] = _mm512_setzero_pd();
+                }
 
                 for (int l = 0; l < k; ++l) {
+                    const double* b_row = B + static_cast<std::size_t>(l) * n + j0;
                     const double* a_row = A + static_cast<std::size_t>(l) * m + i0;
-                    const double* b_row = B + static_cast<std::size_t>(l) * n + j0 + js;
-
-                    // Load B for this strip once, broadcast A across all i-rows
-                    for (int a = 0; a < nacc; ++a) {
-                        const int jj = a * 8;
-                        const int rem = std::min(8, js_len - jj);
-                        const __mmask8 mk = static_cast<__mmask8>((1u << rem) - 1);
-                        const __m512d bv = _mm512_maskz_loadu_pd(mk, b_row + jj);
-                        for (int ii = 0; ii < ilen; ++ii) {
-                            const __m512d av = _mm512_set1_pd(a_row[ii]);
-                            acc[ii * nacc + a] = _mm512_fmadd_pd(av, bv, acc[ii * nacc + a]);
-                        }
+                    const __m512d b0 = _mm512_loadu_pd(b_row);
+                    const __m512d b1 = (jlen >= 16) ? _mm512_loadu_pd(b_row + 8)
+                                                     : _mm512_setzero_pd();
+                    for (int ii = 0; ii < ilen; ++ii) {
+                        const __m512d av = _mm512_set1_pd(a_row[ii]);
+                        acc0[ii] = _mm512_fmadd_pd(av, b0, acc0[ii]);
+                        if (jlen >= 16)
+                            acc1[ii] = _mm512_fmadd_pd(av, b1, acc1[ii]);
                     }
                 }
 
-                // Write-back strip
+                // Write-back with masked stores for tail columns
                 for (int ii = 0; ii < ilen; ++ii) {
-                    double* c_row = C + static_cast<std::size_t>(i0 + ii) * n + j0 + js;
-                    for (int a = 0; a < nacc; ++a) {
-                        const int jj = a * 8;
-                        const int rem = std::min(8, js_len - jj);
-                        const __mmask8 mk = static_cast<__mmask8>((1u << rem) - 1);
-                        _mm512_mask_storeu_pd(c_row + jj, mk, acc[ii * nacc + a]);
-                    }
-                }
-            }
-#else
-            // Scalar fallback
-            for (int l = 0; l < k; ++l) {
-                const double* a_row = A + static_cast<std::size_t>(l) * m + i0;
-                const double* b_row = B + static_cast<std::size_t>(l) * n + j0;
-                for (int ii = 0; ii < ilen; ++ii) {
-                    const double av = a_row[ii];
                     double* c_row = C + static_cast<std::size_t>(i0 + ii) * n + j0;
-                    for (int jj = 0; jj < jlen; ++jj) c_row[jj] += av * b_row[jj];
+                    _mm512_storeu_pd(c_row, acc0[ii]);
+                    if (jlen >= 16) {
+                        const int rem = jlen - 16;
+                        if (rem == 8)
+                            _mm512_storeu_pd(c_row + 8, acc1[ii]);
+                        else if (rem > 0)
+                            _mm512_mask_storeu_pd(c_row + 8,
+                                static_cast<__mmask8>((1u << rem) - 1), acc1[ii]);
+                    }
                 }
+                continue;
             }
 #endif
+            // Fallback for tiny tiles (jlen < 8): scalar
+            for (int ii = 0; ii < ilen; ++ii) {
+                double* c_row = C + static_cast<std::size_t>(i0 + ii) * n + j0;
+                for (int l = 0; l < k; ++l) {
+                    const double av = A[static_cast<std::size_t>(l) * m + i0 + ii];
+                    const double* b_row = B + static_cast<std::size_t>(l) * n + j0;
+                    for (int jj = 0; jj < jlen; ++jj)
+                        c_row[jj] += av * b_row[jj];
+                }
+            }
         }
     }
 }
