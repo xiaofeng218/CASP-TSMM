@@ -28,54 +28,70 @@ constexpr int PANEL = 2048;
 
 // ===== 8×16 register-blocked tiling (static, for compiler optimization) =====
 
+// VERBATIM copy of opt's row_tile_i8_j16
 void dispatch_tiled_row(int m, int n, int k,
                          const double* A, const double* B, double* C) {
-    std::memset(C, 0, static_cast<std::size_t>(m) * n * sizeof(double));
+    constexpr int IB = 8;
+    constexpr int JB = 16;
     const int nbi = (m + IB - 1) / IB;
     const int nbj = (n + JB - 1) / JB;
+    std::memset(C, 0, static_cast<std::size_t>(m) * n * sizeof(double));
 
+#ifdef _OPENMP
 #pragma omp parallel for collapse(2) schedule(static)
+#endif
     for (int bi = 0; bi < nbi; ++bi) {
         for (int bj = 0; bj < nbj; ++bj) {
-            const int i0 = bi * IB, j0 = bj * JB;
+            const int i0 = bi * IB;
+            const int j0 = bj * JB;
             const int ilen = std::min(IB, m - i0);
             const int jlen = std::min(JB, n - j0);
+
 #ifdef __AVX512F__
-            if (jlen == 8 || jlen >= 16) {
-                __m512d acc0[IB], acc1[IB];
+            if (jlen >= 8) {
+                __m512d acc0[IB];
+                __m512d acc1[IB];
                 for (int ii = 0; ii < ilen; ++ii) {
                     acc0[ii] = _mm512_setzero_pd();
                     acc1[ii] = _mm512_setzero_pd();
                 }
                 for (int l = 0; l < k; ++l) {
-                    const double* br = B + static_cast<std::size_t>(l) * n + j0;
-                    const double* ar = A + static_cast<std::size_t>(l) * m + i0;
-                    const __m512d b0 = _mm512_loadu_pd(br);
-                    const __m512d b1 = (jlen >= 16) ? _mm512_loadu_pd(br + 8) : _mm512_setzero_pd();
+                    const double* b = B + static_cast<std::size_t>(l) * n + j0;
+                    const double* a = A + static_cast<std::size_t>(l) * m + i0;
+                    const __m512d b0 = _mm512_loadu_pd(b);
+                    const __m512d b1 = (jlen >= 16) ? _mm512_loadu_pd(b + 8) : _mm512_setzero_pd();
                     for (int ii = 0; ii < ilen; ++ii) {
-                        const __m512d av = _mm512_set1_pd(ar[ii]);
+                        const __m512d av = _mm512_set1_pd(a[ii]);
                         acc0[ii] = _mm512_fmadd_pd(av, b0, acc0[ii]);
                         if (jlen >= 16) acc1[ii] = _mm512_fmadd_pd(av, b1, acc1[ii]);
                     }
                 }
                 for (int ii = 0; ii < ilen; ++ii) {
-                    double* cr = C + static_cast<std::size_t>(i0 + ii) * n + j0;
-                    _mm512_storeu_pd(cr, acc0[ii]);
+                    double* c = C + static_cast<std::size_t>(i0 + ii) * n + j0;
+                    _mm512_storeu_pd(c, acc0[ii]);
                     if (jlen >= 16) {
-                        const int rem = jlen - 16;
-                        if (rem == 0) _mm512_storeu_pd(cr + 8, acc1[ii]);
-                        else _mm512_mask_storeu_pd(cr + 8, static_cast<__mmask8>((1u << rem) - 1), acc1[ii]);
+                        _mm512_storeu_pd(c + 8, acc1[ii]);
+                    } else {
+                        for (int jj = 8; jj < jlen; ++jj) {
+                            double sum = 0.0;
+                            for (int l = 0; l < k; ++l)
+                                sum += A[static_cast<std::size_t>(l) * m + i0 + ii] *
+                                       B[static_cast<std::size_t>(l) * n + j0 + jj];
+                            c[jj] = sum;
+                        }
                     }
                 }
                 continue;
             }
 #endif
             for (int ii = 0; ii < ilen; ++ii) {
-                double* cr = C + static_cast<std::size_t>(i0 + ii) * n + j0;
-                for (int l = 0; l < k; ++l) {
-                    const double av = A[static_cast<std::size_t>(l) * m + i0 + ii];
-                    const double* br = B + static_cast<std::size_t>(l) * n + j0;
-                    for (int jj = 0; jj < jlen; ++jj) cr[jj] += av * br[jj];
+                double* c = C + static_cast<std::size_t>(i0 + ii) * n + j0;
+                for (int jj = 0; jj < jlen; ++jj) {
+                    double sum = 0.0;
+                    for (int l = 0; l < k; ++l)
+                        sum += A[static_cast<std::size_t>(l) * m + i0 + ii] *
+                               B[static_cast<std::size_t>(l) * n + j0 + jj];
+                    c[jj] = sum;
                 }
             }
         }
